@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 棒球場燈光秀系統 (已修復縮放功能)</title>
+    <!-- 引入 Three.js 3D 引擎 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #020617;
+            --card-bg: #0f172a;
+            --primary: #3b82f6;
+            --text: #f3f4f6;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text);
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 { margin: 0 0 5px 0; color: #60a5fa; font-size: 1.4rem; text-align: center; }
+        .subtitle { color: #9ca3af; margin-bottom: 15px; font-size: 0.85rem; text-align: center; }
+
+        .layout {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1400px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .view-3d-card {
+            flex: 1.3;
+            min-width: 580px;
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 12px 35px rgba(0,0,0,0.8);
+            border: 1px solid #1e293b;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 500px;
+            background-color: #000;
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+        #canvas-container:active { cursor: grabbing; }
+
+        .control-card {
+            flex: 1;
+            min-width: 440px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .panel {
+            background-content: var(--card-bg);
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 12px 35px rgba(0,0,0,0.8);
+            border: 1px solid #1e293b;
+        }
+
+        .panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 0.95rem;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 6px;
+            color: #93c5fd;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #475569;
+            background-color: #1e293b;
+            color: white;
+            font-size: 0.9rem;
+        }
+
+        input[type="file"] { display: none; }
+
+        .btn {
+            padding: 8px 14px;
+            border-radius: 6px;
+            border: none;
+            background-color: var(--primary);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 0.85rem;
+        }
+        .btn:hover { filter: brightness(1.2); }
+        .btn-file { background-color: #475569; }
+        .btn-record { background-color: #dc2626; }
+        .btn-record.recording { animation: pulse 1s infinite; background-color: #b91c1c; }
+        .btn-play { background-color: #10b981; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+
+        audio { width: 100%; margin-top: 5px; }
+
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .btn-light {
+            padding: 10px;
+            font-size: 0.85rem;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            color: white;
+            transition: transform 0.1s;
+        }
+        .btn-light:active { transform: scale(0.95); }
+
+        .l-outfield-on { background: #0284c7; }
+        .l-outfield-off { background: #334155; }
+        .l-mound { background: #f8fafc; color: black; }
+        .l-blue { background: #2563eb; }
+        .l-red { background: #dc2626; }
+        .l-gold { background: #d97706; color: black; }
+        .l-laser { background: #10b981; }
+        .l-strobe { background: #ea580c; }
+        .l-rainbow { background: linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6); }
+        .l-off { background: #0f172a; border: 1px solid #475569; grid-column: span 3; }
+
+        .log-box {
+            background: #020617;
+            border: 1px solid #1e293b;
+            border-radius: 6px;
+            padding: 8px;
+            height: 65px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #10b981;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🏟️ 3D 棒球場燈光秀系統</h1>
+    <div class="subtitle">滑鼠滾輪縮放 ╳ 拖曳旋轉 ╳ 外野大燈 ╳ 密集內野燈 ╳ 投手丘白光</div>
+
+    <div class="layout">
+        <!-- 左側：3D 球場 -->
+        <div class="view-3d-card">
+            <h3>⚾ 3D 球場實景預覽 (滑鼠左鍵旋轉、滾輪縮放)</h3>
+            <div id="canvas-container"></div>
+            <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 8px; text-align: center;">
+                💡 滾輪向前/向後可自由放大縮小球場視角！
+            </div>
+        </div>
+
+        <!-- 右側：控制面板 -->
+        <div class="control-card">
+            <!-- 1. 音樂設定 -->
+            <div class="panel">
+                <h3>1. 音樂來源設定</h3>
+                <div class="input-row">
+                    <input type="text" id="audioUrl" placeholder="貼上音樂網址 (.mp3)">
+                    <button class="btn" onclick="loadAudioUrl()">載入</button>
+                    <label for="localFile" class="btn btn-file" style="cursor: pointer;">上傳檔案</label>
+                    <input type="file" id="localFile" accept="audio/*" onchange="loadAudioFile(event)">
+                </div>
+                <audio id="audioPlayer" controls></audio>
+            </div>
+
+            <!-- 2. 錄製與回放 -->
+            <div class="panel">
+                <h3>
+                    <span>2. 燈光秀錄製與回放</span>
+                    <span id="recStateText" style="font-size: 0.8rem; color: #94a3b8;">狀態：未錄製</span>
+                </h3>
+                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                    <button class="btn btn-record" id="recBtn" onclick="toggleRecording()" style="flex: 1;">🔴 開始錄製動作</button>
+                    <button class="btn btn-play" onclick="playShow()" style="flex: 1;">▶️ 播放燈光秀</button>
+                    <button class="btn" style="background:#475569;" onclick="clearRec()">清除</button>
+                </div>
+                <div class="log-box" id="logBox">系統就緒。</div>
+            </div>
+
+            <!-- 3. 燈光控制面板 -->
+            <div class="panel">
+                <h3>3. 球場燈光與特效控制</h3>
+                <div class="color-grid">
+                    <button class="btn-light l-outfield-on" onclick="triggerLight('outfield_on')">💡 外野大燈：開</button>
+                    <button class="btn-light l-outfield-off" onclick="triggerLight('outfield_off')">🔌 外野大燈：關</button>
+                    <button class="btn-light l-mound" onclick="triggerLight('mound_spot')">⚪ 投手丘聚光燈</button>
+                    <button class="btn-light l-blue" onclick="triggerLight('blue')">🔵 藍光應援</button>
+                    <button class="btn-light l-red" onclick="triggerLight('red')">🔴 紅光激情</button>
+                    <button class="btn-light l-gold" onclick="triggerLight('gold')">🟡 香檳金榮耀</button>
+                    <button class="btn-light l-laser" onclick="triggerLight('laser')">✨ 雷射光束秀</button>
+                    <button class="btn-light l-strobe" onclick="triggerLight('strobe')">⚡ 爆閃狂歡</button>
+                    <button class="btn-light l-rainbow" onclick="triggerLight('rainbow')">🌈 七彩霓虹</button>
+                    <button class="btn-light l-off" onclick="triggerLight('off')">⚫ 關閉全場燈光</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Three.js 3D 球場建立 ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x010b14);
+
+        const camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(0, 35, 55);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+
+        // 外野草皮
+        const outfieldGeo = new THREE.RingGeometry(5, 32, 32, 1, 0, Math.PI);
+        const outfieldMat = new THREE.MeshBasicMaterial({ color: 0x064e3b, side: THREE.DoubleSide });
+        const outfield = new THREE.Mesh(outfieldGeo, outfieldMat);
+        outfield.rotation.x = -Math.PI / 2;
+        scene.add(outfield);
+
+        // 內野紅土區
+        const infieldGeo = new THREE.PlaneGeometry(24, 24);
+        const infieldMat = new THREE.MeshBasicMaterial({ color: 0x7c2d12 });
+        const infield = new THREE.Mesh(infieldGeo, infieldMat);
+        infield.rotation.x = -Math.PI / 2;
+        infield.rotation.z = Math.PI / 4;
+        infield.position.set(0, 0.1, 6);
+        scene.add(infield);
+
+        // 全壘打牆
+        const wallGeo = new THREE.CylinderGeometry(32, 32, 5, 32, 1, true, 0, Math.PI);
+        const wallMat = new THREE.MeshBasicMaterial({ color: 0x1e3a8a, side: THREE.DoubleSide });
+        const wall = new THREE.Mesh(wallGeo, wallMat);
+        wall.position.set(0, 2.5, 0);
+        scene.add(wall);
+
+        // 🟢 圓形立體投手丘
+        const moundGeo = new THREE.CylinderGeometry(2.5, 3, 0.8, 32);
+        const moundMat = new THREE.MeshBasicMaterial({ color: 0x9a3412 });
+        const mound = new THREE.Mesh(moundGeo, moundMat);
+        mound.position.set(0, 0.4, 6);
+        scene.add(mound);
+
+        // ⚪ 投手丘專屬聚光燈
+        const spotGeo = new THREE.CylinderGeometry(2.5, 4, 30, 32);
+        const spotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+        const moundSpotLight = new THREE.Mesh(spotGeo, spotMat);
+        moundSpotLight.position.set(0, 15, 6);
+        scene.add(moundSpotLight);
+
+        // A. 外野大燈群
+        const outfieldFixtures = [];
+        const outerLightsCount = 16;
+        const outerRadius = 35;
+        for (let i = 0; i < outerLightsCount; i++) {
+            const angle = (i / (outerLightsCount - 1)) * Math.PI;
+            const x = Math.cos(angle) * outerRadius;
+            const z = Math.sin(angle) * outerRadius;
+
+            const poleGeo = new THREE.CylinderGeometry(0.2, 0.3, 18);
+            const poleMat = new THREE.MeshBasicMaterial({ color: 0x334155 });
+            const pole = new THREE.Mesh(poleGeo, poleMat);
+            pole.position.set(x, 9, z);
+            scene.add(pole);
+
+            const bulbGeo = new THREE.SphereGeometry(1, 16, 16);
+            const bulbMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+            const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+            bulb.position.set(x, 18, z);
+            scene.add(bulb);
+
+            outfieldFixtures.push(bulb);
+        }
+
+        // B. 內野密集燈群
+        const infieldFixtures = [];
+        const innerLightsCount = 24;
+        const innerRadius = 13;
+        for (let i = 0; i < innerLightsCount; i++) {
+            const angle = (i / innerLightsCount) * (Math.PI * 1.2) - (Math.PI * 0.1);
+            const x = Math.cos(angle) * innerRadius;
+            const z = Math.sin(angle) * innerRadius + 5;
+
+            const poleGeo = new THREE.CylinderGeometry(0.12, 0.15, 4.5);
+            const poleMat = new THREE.MeshBasicMaterial({ color: 0x334155 });
+            const pole = new THREE.Mesh(poleGeo, poleMat);
+            pole.position.set(x, 2.25, z);
+            scene.add(pole);
+
+            const bulbGeo = new THREE.SphereGeometry(0.6, 16, 16);
+            const bulbMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+            const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+            bulb.position.set(x, 4.5, z);
+            scene.add(bulb);
+
+            infieldFixtures.push(bulb);
+        }
+
+        // --- 視角互動控制 (旋轉與滾輪縮放) ---
+        let isDragging = false;
+        let prevMouse = { x: 0, y: 0 };
+
+        container.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            prevMouse = { x: e.clientX, y: e.clientY };
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const deltaX = e.clientX - prevMouse.x;
+            scene.rotation.y += deltaX * 0.005;
+            prevMouse = { x: e.clientX, y: e.clientY };
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        // 修复：加入滑鼠滾輪縮放事件
+        container.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            // 調整相機位置實現縮放
+            camera.position.z += e.deltaY * 0.05;
+            camera.position.y += e.deltaY * 0.03;
+            
+            // 限制縮放範圍，避免過近或過遠
+            camera.position.z = Math.max(20, Math.min(120, camera.position.z));
+            camera.position.y = Math.max(15, Math.min(80, camera.position.y));
+        }, { passive: false });
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+            renderer.render(scene, camera);
+        }
+        animate3D();
+
+        // --- 2. 燈光呈現與錄製核心邏輯 ---
+        let isRecording = false;
+        let recStartTime = 0;
+        let sequence = [];
+        let isPlaying = false;
+        let timeouts = [];
+
+        function applyLight(mode) {
+            moundSpotLight.material.opacity = 0;
+
+            if (mode === 'off') {
+                outfieldFixtures.forEach(b => b.material.color.setHex(0x111111));
+                infieldFixtures.forEach(b => b.material.color.setHex(0x111111));
+            } else if (mode === 'outfield_on') {
+                outfieldFixtures.forEach(b => b.material.color.setHex(0xffffff));
+            } else if (mode === 'outfield_off') {
+                outfieldFixtures.forEach(b => b.material.color.setHex(0x111111));
+            } else if (mode === 'mound_spot') {
+                moundSpotLight.material.opacity = 0.9;
+                infieldFixtures.forEach(b => b.material.color.setHex(0x555555));
+            } else {
+                let color = 0xffffff;
+                if (mode === 'blue') color = 0x2563eb;
+                else if (mode === 'red') color = 0xdc2626;
+                else if (mode === 'gold') color = 0xd97706;
+                else if (mode === 'laser') color = 0x10b981;
+                else if (mode === 'strobe') color = 0xff5500;
+
+                if (mode === 'rainbow') {
+                    const rainbowColors = [0xef4444, 0xf59e0b, 0x10b981, 0x3b82f6, 0xa855f7, 0xec4899];
+                    outfieldFixtures.forEach((b, idx) => b.material.color.setHex(rainbowColors[idx % rainbowColors.length]));
+                    infieldFixtures.forEach((b, idx) => b.material.color.setHex(rainbowColors[idx % rainbowColors.length]));
+                } else {
+                    outfieldFixtures.forEach(b => b.material.color.setHex(color));
+                    infieldFixtures.forEach(b => b.material.color.setHex(color));
+                }
+            }
+        }
+
+        function triggerLight(mode) {
+            if (isPlaying) return;
+            const time = Date.now();
+            if (isRecording) {
+                const elapsed = time - recStartTime;
+                sequence.push({ time: elapsed, mode: mode });
+                appendLog(`[錄製 +${elapsed}ms] 燈光切換: ${mode}`);
+            }
+            applyLight(mode);
+        }
+
+        function toggleRecording() {
+            const btn = document.getElementById('recBtn');
+            const stateText = document.getElementById('recStateText');
+            const player = document.getElementById('audioPlayer');
+
+            if (!isRecording) {
+                isRecording = true;
+                sequence = [];
+                recStartTime = Date.now();
+                btn.innerText = "⏹️ 停止錄製";
+                btn.classList.add('recording');
+                stateText.innerText = "🔴 錄製中...";
+                stateText.style.color = "#ef4444";
+                appendLog("--- 開始錄製燈光秀 ---");
+                player.currentTime = 0;
+                player.play().catch(e => {});
+            } else {
+                isRecording = false;
+                btn.innerText = "🔴 開始錄製動作";
+                btn.classList.remove('recording');
+                stateText.innerText = "✅ 錄製完成";
+                stateText.style.color = "#10b981";
+                appendLog(`--- 錄製完畢！共 ${sequence.length} 個動作 ---`);
+            }
+        }
+
+        function clearRec() {
+            sequence = [];
+            document.getElementById('recStateText').innerText = "未錄製";
+            document.getElementById('recStateText').style.color = "#94a3b8";
+            appendLog("已清除錄製。");
+        }
+
+        function playShow() {
+            if (sequence.length === 0) {
+                alert('請先點擊「開始錄製動作」來錄製燈光秀！');
+                return;
+            }
+            timeouts.forEach(t => clearTimeout(t));
+            timeouts = [];
+            isPlaying = true;
+            appendLog(">>> 開始播放燈光秀 <<<");
+
+            const player = document.getElementById('audioPlayer');
+            player.currentTime = 0;
+            player.play().catch(e => {});
+
+            sequence.forEach(act => {
+                const tId = setTimeout(() => {
+                    applyLight(act.mode);
+                    appendLog(`[回放 +${act.time}ms] 動作: ${act.mode}`);
+                }, act.time);
+                timeouts.push(tId);
+            });
+
+            const maxT = sequence[sequence.length - 1].time + 1000;
+            const endId = setTimeout(() => {
+                isPlaying = false;
+                appendLog(">>> 燈光秀播放完畢 <<<");
+            }, maxT);
+            timeouts.push(endId);
+        }
+
+        function loadAudioUrl() {
+            const url = document.getElementById('audioUrl').value.trim();
+            if (url) document.getElementById('audioPlayer').src = url;
+        }
+        function loadAudioFile(e) {
+            const f = e.target.files[0];
+            if (f) document.getElementById('audioPlayer').src = URL.createObjectURL(f);
+        }
+        function appendLog(txt) {
+            const box = document.getElementById('logBox');
+            box.innerHTML += `<div>${txt}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
+    </script>
+</body>
+</html>
